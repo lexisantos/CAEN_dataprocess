@@ -10,8 +10,8 @@ from scipy.signal import find_peaks
 
 #%% General
 
-def filter_hist(df_hist, counts_min = 0, counts_max = np.inf, ch_min = 0, ch_max = np.inf):
-    df_hist = df_hist[(df_hist.Energy <= ch_max) & (df_hist.Energy >= ch_min) & (df_hist.Counts >= counts_min) & (df_hist.Counts <= counts_max)]
+def filter_hist(df_hist, counts_min = 0, counts_max = np.inf, ch_min = 0, ch_max = np.inf, x_col = 'Energy_Ch'):
+    df_hist = df_hist[(df_hist[x_col] <= ch_max) & (df_hist[x_col] >= ch_min) & (df_hist.Counts >= counts_min) & (df_hist.Counts <= counts_max)]
     return df_hist
 
 #%% Process .root
@@ -96,10 +96,11 @@ def bin_to_df(filepath):
     #df['Timestamp'] = df['Timestamp']/1E12
     return df
 
-def hist_bin(filepath):
-    df_bin = bin_to_df(filepath)
-    df_hist = (df_bin.groupby(['Channel', 'Energy'], as_index=False)
-               .agg(Counts = ('Flag', "count"))).reset_index(drop = True)
+def hist_bin(df_bin):
+    df_hist = (df_bin.groupby(['Channel', 'Energy_Ch'], as_index=False)
+               .agg(
+                   Counts = ('Flag', "count")
+            )).reset_index(drop = True)
     return df_hist
 
 def BIN_files_classifier(filepath, arr_run_BINs):
@@ -203,14 +204,14 @@ def find_coincidences(df_0, df_1, window_ps):
             coincidences.append((i, j))
     return coincidences
 
-def df_coincidences(dfBIN, det_0, det_1, window_ns, Energy_col = ['Energy_ch', 'Energy']):    
-    dfBIN_ch1 = dfBIN[dfBIN.Channel == det_1].sort_values(by = 'Timestamp')
-    dfBIN_ch0 = dfBIN[dfBIN.Channel == det_0].sort_values(by = 'Timestamp')
+def df_coincidences(dfBIN, det_E, det_dE, window_ns, Energy_col = ['Energy_ch', 'Energy']):    
+    dfBIN_dE = dfBIN[dfBIN.Channel == det_dE].sort_values(by = 'Timestamp')
+    dfBIN_E = dfBIN[dfBIN.Channel == det_E].sort_values(by = 'Timestamp')
     
-    df_coinc = pd.DataFrame(find_coincidences(dfBIN_ch0, dfBIN_ch1, window_ns*1E3), columns = ['i', 'j'])
+    df_coinc = pd.DataFrame(find_coincidences(dfBIN_E, dfBIN_dE, window_ns*1E3), columns = ['i', 'j'])
     for col in Energy_col:
-        df_coinc[f'{col}_DET{det_0}'] = dfBIN_ch0.iloc[df_coinc.i][col].values
-        df_coinc[f'{col}_DET{det_1}'] = dfBIN_ch1.iloc[df_coinc.j][col].values
+        df_coinc[f'{col}_E'] = dfBIN_E.iloc[df_coinc.i][col].values
+        df_coinc[f'{col}_dE'] = dfBIN_dE.iloc[df_coinc.j][col].values
 
     return df_coinc
 
@@ -226,11 +227,18 @@ def create_folder(folder_name):
     else:
         print(f"Folder '{folder_name}' already exists.")
 
-def graph_coincidences(df_coinc, det_0, det_1, nro_bins: int = 200, Energy_col = 'Energy'):
+def graph_coincidences(df_coinc, nro_bins: int = 200, Energy_col = 'Energy', add_both = False):
+    E_arr = df_coinc[f'{Energy_col}_E'].values
+    if add_both:
+        dE_arr = df_coinc[f'{Energy_col}_dE'].values + E_arr
+        y_lab = f'(E + dE) [MeV]' 
+    else:
+        dE_arr = df_coinc[f'{Energy_col}_dE'].values
+        y_lab = f'dE [MeV]'
     counts, x_edges, y_edges = np.histogram2d(
-    df_coinc[f'{Energy_col}_DET{det_0}'].values,
-    df_coinc[f'{Energy_col}_DET{det_1}'].values,
-    bins= nro_bins  
+        E_arr, 
+        dE_arr,
+        bins= nro_bins  
     )
 
     plt.pcolormesh(
@@ -244,9 +252,11 @@ def graph_coincidences(df_coinc, det_0, det_1, nro_bins: int = 200, Energy_col =
     )
 
     plt.colorbar()
-    plt.xlabel(f'E [MeV], Det. {det_0}')
-    plt.ylabel(f'E [MeV], Det {det_1}')
+    plt.xlabel(f'E [MeV]')
+    plt.ylabel(y_lab)
     plt.show()
+    return counts, x_edges, y_edges
+
 
 def graph_hist(df_bin, hist_root_dict, folder, name = 'Figure', window = 100, save_fig = False):
     save_fig_in = '/Graficos_root_bin'
