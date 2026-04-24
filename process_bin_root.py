@@ -209,7 +209,7 @@ def apply_calibration_en(df, df_coef, old = 'Energy_Ch', new = 'Energy'):
             df[col.replace('Energy_Ch', new)] = df[col].map(lambda x: coef['m'] * x + coef['b'])
     else:
         df[new] = df[old].astype(float)
-        for det in df['Ch_Det'].unique():
+        for det in list(coef_dict.keys()):
             coef = coef_dict[det]
             df.loc[df['Ch_Det'] == det, new] = (
                 df.loc[df['Ch_Det'] == det, new]
@@ -276,7 +276,7 @@ def graph_coincidences(df_coinc, nro_bins: int = 200, Energy_col = 'Energy', add
         )
 
         plt.colorbar()
-        plt.xlabel(f'E [MeV]')
+        plt.xlabel('E [MeV]' if Energy_col == 'Energy' else 'Canal')
         plt.ylabel(y_lab)
         plt.show()
     
@@ -321,15 +321,15 @@ def graph_coincidences(df_coinc, nro_bins: int = 200, Energy_col = 'Energy', add
     return fig
 
 
-def graph_data_BIN_hist_filt(dfBIN_hist_filt, plot_by = 'matplotlib'):
+def graph_data_BIN_hist_filt(dfBIN_hist_filt, plot_by = 'matplotlib', x_col = 'Energy'):
     if plot_by == 'plotly':
-        fig = px.scatter(data_frame= dfBIN_hist_filt, x = 'Energy', y = 'Counts', color = dfBIN_hist_filt.Ch_Det.astype(str),
-                title = 'From BIN archive', labels={'Energy': 'Energy [MeV]'})
+        fig = px.scatter(data_frame= dfBIN_hist_filt, x = x_col, y = 'Counts', color = dfBIN_hist_filt.Ch_Det.astype(str),
+                title = 'From BIN archive', labels={'Energy': 'Energy [MeV]', 'Counts': 'Counts of events [a.u.]'})
         fig.show()
 
     elif plot_by == 'seaborn':
         fig = (
-            so.Plot(data = dfBIN_hist_filt, x = 'Energy', y = 'Counts', color = dfBIN_hist_filt.Ch_Det.astype(str))
+            so.Plot(data = dfBIN_hist_filt, x = x_col, y = 'Counts', color = dfBIN_hist_filt.Ch_Det.astype(str))
             .add(so.Dot())
             .label(x = 'Energy [MeV]', y = 'Counts of events [a.u.]', title = 'From BIN archive')
             .show()
@@ -339,12 +339,12 @@ def graph_data_BIN_hist_filt(dfBIN_hist_filt, plot_by = 'matplotlib'):
     return fig
 
 def graph_coincidences_hist(run, df_coincidences, plot_by = 'matplotlib', E_col = 'Energy_E', 
-                            dE_col = 'Energy_dE', title = None, show = True):
+                            dE_col = 'Energy_dE', title = None, show = True, nro_bins = 200):
     df_coincidences['E+dE'] = df_coincidences[E_col] + df_coincidences[dE_col]
     
     if plot_by == 'plotly':
-        fig = px.histogram(data_frame= df_coincidences, x = 'E+dE', barmode= 'overlay',
-                    title = title, labels={'Energy': 'Energy [MeV]'})
+        fig = px.histogram(data_frame= df_coincidences, x = 'E+dE', barmode= 'overlay', nbins= nro_bins,
+                    title = title, labels={'E+dE': 'E + dE [MeV]', 'counts': 'Counts of events [a.u.]'})
     elif plot_by == 'seaborn':
         fig = (
             so.Plot(data = df_coincidences, x = 'E+dE')
@@ -404,7 +404,7 @@ def run_data_BIN(run, path, calibration = False, name = 'Default', E_dE = (0, 1)
             df_coinc_wo_0 = df_coinc[(df_coinc.Energy_Ch_E > 0) & (df_coinc.Energy_Ch_dE > 0)]
             df_coinc_wo_0.to_csv(path + run + f'/{name}_coincidences.csv', index = False)
     else:
-        df_coinc_wo_0 = pd.DataFrame(np.zeros(6), 
+        df_coinc_wo_0 = pd.DataFrame(np.zeros((6, 4)), 
                                      columns = ['i', 'j', 'Energy_Ch_E', 'Energy_Ch_dE'])
 
     if type(calibration) == str:
