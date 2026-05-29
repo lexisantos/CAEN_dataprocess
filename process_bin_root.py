@@ -6,15 +6,33 @@ import numpy as np
 import seaborn.objects as so
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-from scipy.signal import find_peaks
+#from scipy.signal import find_peaks
 from plotly import express as px
 import plotly.graph_objects as go
+from sklearn.preprocessing import MinMaxScaler
+scaler = MinMaxScaler()
 
 #%% General
 
 def filter_hist(df_hist, counts_min = 0, counts_max = np.inf, ch_min = 0, ch_max = np.inf, Ch_col = 'Energy_Ch'):
     df_hist = df_hist[(df_hist[Ch_col] <= ch_max) & (df_hist[Ch_col] >= ch_min) & (df_hist.Counts >= counts_min) & (df_hist.Counts <= counts_max)]
     return df_hist
+
+def get_info(path, run):
+    path_info_txt = path + run + '/run.info'
+
+    with open(path_info_txt, 'r', encoding= 'utf-8') as f:
+        content = f.readlines()
+
+    options = ['time.start', 'time.stop', 'time.real']
+    result = {}
+
+    for line in content:
+        if any(option in line for option in options):
+            key, value = line.split('=')
+            result[key] = value[:-1]
+    return result
+
 
 #%% Process .root
 def encuentraObjetos(rootfile, path="", dictKeys = {'Name':[], 'ClassName': [], 'Path': []}):    
@@ -321,19 +339,21 @@ def graph_coincidences(df_coinc, nro_bins: int = 200, Energy_col = 'Energy', add
     return fig
 
 
-def graph_data_BIN_hist_filt(dfBIN_hist_filt, plot_by = 'matplotlib', x_col = 'Energy'):
+def graph_data_BIN_hist_filt(dfBIN_hist_filt, plot_by = 'matplotlib', x_col = 'Energy', info_time = '', show = True):
     if plot_by == 'plotly':
-        fig = px.scatter(data_frame= dfBIN_hist_filt, x = x_col, y = 'Counts', color = dfBIN_hist_filt.Ch_Det.astype(str),
-                title = 'From BIN archive', labels={'Energy': 'Energy [MeV]', 'Counts': 'Counts of events [a.u.]'})
-        fig.show()
+        fig = px.line(data_frame= dfBIN_hist_filt, x = x_col, y = 'Counts', color = dfBIN_hist_filt.Ch_Det.astype(str), markers=True,
+                title = 'From BIN archive' + info_time, labels={'Energy': 'Energy [MeV]', 'Counts': 'Counts of events [a.u.]'})
+        if show:
+            fig.show()
 
     elif plot_by == 'seaborn':
         fig = (
             so.Plot(data = dfBIN_hist_filt, x = x_col, y = 'Counts', color = dfBIN_hist_filt.Ch_Det.astype(str))
             .add(so.Dot())
             .label(x = 'Energy [MeV]', y = 'Counts of events [a.u.]', title = 'From BIN archive')
-            .show()
         )
+        if show:
+            fig.show()
     else:
         fig = None
     return fig
@@ -395,7 +415,7 @@ def run_data_BIN(run, path, calibration = False, name = 'Default', E_dE = (0, 1)
     dfBIN = bin_to_df(pathBIN)
     dfBIN_hist = hist_bin(dfBIN)
     dfBIN_hist_filt = filter_hist(dfBIN_hist, counts_min=filter['counts_min'], ch_min=filter['ch_min'], ch_max=filter['ch_max'])
-
+    
     if run_coincidences:
         try:
             df_coinc_wo_0 = pd.read_csv(path + run + f'/{name}_coincidences.csv') 
@@ -416,7 +436,52 @@ def run_data_BIN(run, path, calibration = False, name = 'Default', E_dE = (0, 1)
 
     return dfBIN, dfBIN_hist_filt, df_coinc_wo_0
 
+def compare_peaks(path, folders, path_calib, det):
+    fig_list = []
 
+    for folder, runs in folders.items():
+        for run in runs:
+            _, dfBIN_hist_filt1, _ = run_data_BIN(
+                run,
+                path(folder),
+                name=run,
+                calibration=path_calib,
+                filter={'counts_min': 1, 'ch_min': 1, 'ch_max': np.inf},
+                run_coincidences=False
+            )
+
+            dfBIN_hist_filt_norm = dfBIN_hist_filt1[dfBIN_hist_filt1.Ch_Det == det].copy()
+            dfBIN_hist_filt_norm['Counts'] = scaler.fit_transform(dfBIN_hist_filt_norm[['Counts']])
+
+            fig = graph_data_BIN_hist_filt(
+                dfBIN_hist_filt_norm,
+                plot_by='plotly',
+                x_col='Energy',
+                show = False
+            )
+            fig_list.append(fig)
+
+    all_runs = np.array(list(folders.values()), dtype=object).flatten()
+    colors = px.colors.qualitative.Plotly 
+
+    fig_all = go.Figure()
+
+    for i, (run, fig) in enumerate(zip(all_runs, fig_list)):
+        trace = fig.data[0]
+
+        trace.name = run
+        trace.showlegend = True
+
+        color = colors[i % len(colors)]
+
+        if hasattr(trace, "line"):
+            trace.line.color = color
+        if hasattr(trace, "marker"):
+            trace.marker.color = color
+
+        fig_all.add_trace(trace)
+
+    fig_all.show()
 
 
 #%% Precindible
