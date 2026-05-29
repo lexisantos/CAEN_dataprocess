@@ -6,11 +6,9 @@ import numpy as np
 import seaborn.objects as so
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-#from scipy.signal import find_peaks
+from scipy.signal import find_peaks
 from plotly import express as px
 import plotly.graph_objects as go
-from sklearn.preprocessing import MinMaxScaler
-scaler = MinMaxScaler()
 
 #%% General
 
